@@ -9,7 +9,7 @@
 //  * You may (and should) include some extra headers for optimizations.
 //
 //  * You should and ONLY should modify the function body of `kmeans()`.
-//    DO NOT change any other exitsing part of the program.
+//    DO NOT change any other existing part of the program.
 //
 //  * You may add your own auxiliary functions if you wish. Extra declarations
 //    can go in `kmeans.h`.
@@ -67,6 +67,8 @@ main (int argc, char *argv[])
     int pn, cn;
 
     assert(fscanf(fi, "%d / %d\n", &pn, &cn) == 2);
+
+    // std::cout << "cn = " << cn << std::endl;
 
     point_t * const data = new point_t[pn];
     color_t * const coloring = new color_t[pn];
@@ -140,51 +142,117 @@ main (int argc, char *argv[])
  *   sequential way. You should optimize and parallelize it for a better
  *   performance. Techniques you can use include but not limited to:
  *
- *     1. OpenMP shared-memory parallelization.
- *     2. SSE SIMD instructions.
- *     3. Cache optimizations.
- *     4. Manually using pthread.
- *     5. ...
+ *     1. OpenMP shared-memory parallelization. (Used)
+ *     2. SSE SIMD instructions. (...)
+ *     3. Cache optimizations. (Maybe not)
+ *     4. Manually using pthread. (No No No)
+ *     5. remove sqrt (easy)
+ *     6. Algorithm optimization?
+ *     7. Space for time (use array)
+ *     8. ...
  *
  */
 void
 kmeans (point_t * const data, point_t * const mean, color_t * const coloring,
         const int pn, const int cn)
 {
-    bool converge = true;
-    int loop = 0;
+    bool converge = true; // if the algorithm converges
+    double* const sumx_array = new double[cn]; // Use an array to store the sum of all the x coordinate of each color
+    double* const sumy_array = new double[cn]; // Use an array to store the sum of all the y coordinate of each color
+    int* const count_array = new int[cn]; // Use an array to store the count
+
     /* Loop through the following two stages until no point changes its color
        during an iteration. */
+
+    //int loop = 0;
     do {
-        loop++;
         converge = true;
+        // Initialize the 3 arrays
+        for (int i = 0; i < cn; ++i)
+            sumx_array[i] = 0;
+
+        for (int i = 0; i < cn; ++i)
+            sumy_array[i] = 0;
+
+        for (int i = 0; i < cn; ++i)
+            count_array[i] = 0;
 
         /* Compute the color of each point. A point gets assigned to the
            cluster with the nearest center point. */
 
-        #pragma omp parallel for
-        for (int i = 0; i < pn; ++i) {
-            color_t new_color = cn;
+        // #pragma omp parallel
+        // {
+        // #pragma omp for
+        for (int i = 0; i < pn; ++i) { // loop over pn data points
+            color_t new_color = cn; // number of colors
             double min_dist = std::numeric_limits<double>::infinity();
 
             for (color_t c = 0; c < cn; ++c) {
-                double dist = pow(data[i].getX() - mean[c].getX(), 2) +
-                                   pow(data[i].getY() - mean[c].getY(), 2);
+                double dist = pow(data[i].getX() - mean[c].getX(), 2) + pow(data[i].getY() - mean[c].getY(), 2);
                 if (dist < min_dist) {
                     min_dist = dist;
                     new_color = c;
                 }
             }
 
+            // std::cout << ", new_color = " << new_color << std::endl;
+
+            // #pragma omp critical
+
+            sumx_array[new_color] += data[i].getX();
+            sumy_array[new_color] += data[i].getY();
+            count_array[new_color]++;
+
+
             if (coloring[i] != new_color) {
+                // std::cout << "new_color=" << new_color << ", i = " << i << std::endl;
+                /* std::cout << "data[i].getX()=" << data[i].getX() << std::endl;
+                std::cout << "data[i].getY()=" << data[i].getY() << std::endl;
+                std::cout << "set sumx_array[new_color]=" << sumx_array[new_color] << std::endl;
+                std::cout << "set sumx_array[new_color]=" << sumx_array[new_color] << std::endl;
+                std::cout << "set sumy_array[new_color]=" << sumy_array[new_color] << std::endl;
+                std::cout << "set count_array[new_color]=" << count_array[new_color] << std::endl; */
                 coloring[i] = new_color;
                 converge = false;
             }
         }
+        // }
 
         /* Calculate the new mean for each cluster to be the current average
            of point positions in the cluster. */
 
+        /*
+        #pragma omp parallel
+        {
+            #pragma omp for
+            for (int i = 0; i < pn; i++) {
+                for (int c = 0; c < cn; c++) {
+                    if (coloring[i] == c) {
+                        #pragma omp critical
+                        {
+                            sumx_array[c] += data[i].getX();
+                            sumy_array[c] += data[i].getY();
+                            count_array[c]++;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        */
+
+        // #pragma omp parallel for
+        for (color_t c = 0; c < cn; ++c) {
+            /* std::cout << "c=" << c << std::endl;
+            std::cout << "mean[c]=" << mean[c] << std::endl;
+            std::cout << "sumx_array[c]=" << sumx_array[c] << std::endl;
+            std::cout << "sumy_array[c]=" << sumy_array[c] << std::endl;
+            std::cout << "count_array[c]=" << count_array[c] << std::endl; */
+            mean[c].setXY(sumx_array[c] / count_array[c], sumy_array[c] / count_array[c]);
+        }
+
+        // original code
+        /*
         for (color_t c = 0; c < cn; ++c) {
             double sum_x = 0, sum_y = 0;
             int count = 0;
@@ -198,14 +266,15 @@ kmeans (point_t * const data, point_t * const mean, color_t * const coloring,
                 }
             }
 
-            // std::cout << std::endl << "loop = " << loop << std::endl;
-            // std::cout << "color = " << c << std::endl;
-            // std::cout << "sum_x = " << sum_x << ", sum_y = " << sum_y << std::endl;
-            // std::cout << "count = " << count << std::endl << std::endl;
             mean[c].setXY(sum_x / count, sum_y / count);
         }
+        */
 
     } while (!converge);
+
+    delete sumx_array;
+    delete sumy_array;
+    delete count_array;
 }
 
 /*********************************************************
